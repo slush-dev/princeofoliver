@@ -1,0 +1,23 @@
+# Godot 4 cache/imports
+.godot/
+.import/
+
+# Godot Mono / C# (unused here, but safe)
+.mono/
+
+# Local editor/system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local runtime/cache
+.xdg/
+
+# Local tools/binaries
+/tools/Godot_v*
+
+# Logs and temp
+*.log
+*.tmp
+*~
