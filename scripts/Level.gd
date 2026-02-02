@@ -219,20 +219,25 @@ func _add_platform(pos: Vector2, size: Vector2, texture: Texture2D) -> void:
 	body.add_child(top)
 
 func _spawn_ladder() -> void:
+	_add_ladder(Vector2(180, 160), 64.0)
+	_add_ladder(Vector2(1020, 140), 102.0)
+
+func _add_ladder(pos: Vector2, height: float) -> void:
 	var ladder := Area2D.new()
-	ladder.position = Vector2(180, 160)
+	ladder.position = pos
 	ladder.add_to_group("ladder")
 	interactables.add_child(ladder)
 
 	var shape := RectangleShape2D.new()
-	shape.size = Vector2(16, 64)
+	shape.size = Vector2(16, height)
 	var collider := CollisionShape2D.new()
 	collider.shape = shape
 	ladder.add_child(collider)
 
 	var sprite := Sprite2D.new()
 	sprite.texture = TEX_LADDER if TEX_LADDER else TEX_PIXEL
-	sprite.scale = Vector2(1, 4)
+	var base_height := sprite.texture.get_size().y if sprite.texture else 16.0
+	sprite.scale = Vector2(1, height / base_height)
 	sprite.position = Vector2.ZERO
 	ladder.add_child(sprite)
 
@@ -275,7 +280,7 @@ func _spawn_kill_zone() -> void:
 func _spawn_key() -> void:
 	var key := Area2D.new()
 	key.name = "Key"
-	key.position = Vector2(1060, 178)
+	key.position = Vector2(880, 126)
 	key.monitoring = true
 	interactables.add_child(key)
 
