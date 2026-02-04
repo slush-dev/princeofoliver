@@ -45,8 +45,13 @@ var guard_spawns: Array[Dictionary] = []
 var ambient_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
 const DEBUG_RESPAWN := true
+const LABEL_COLOR := Color(0.95, 0.9, 0.75, 0.95)
+const LABEL_FONT_SIZE := 11
+const LABEL_Z_INDEX := 100
+var labels_enabled := false
 
 func _ready() -> void:
+	labels_enabled = _labels_enabled_from_args()
 	_load_assets()
 	_load_audio()
 	_setup_audio()
@@ -69,6 +74,25 @@ func _process(delta: float) -> void:
 	_animate_key(delta)
 	_animate_princess(delta)
 	_animate_torches(delta)
+
+func _labels_enabled_from_args() -> bool:
+	var args := OS.get_cmdline_args()
+	for arg in args:
+		if arg == "--labels":
+			return true
+	return false
+
+func _attach_label(target: Node2D, text: String, offset: Vector2 = Vector2(0, -18)) -> void:
+	if not labels_enabled:
+		return
+	var label := Label.new()
+	label.text = text
+	label.position = offset
+	label.z_index = LABEL_Z_INDEX
+	label.add_theme_font_size_override("font_size", LABEL_FONT_SIZE)
+	label.modulate = LABEL_COLOR
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	target.add_child(label)
 
 func _setup_audio() -> void:
 	ambient_player = AudioStreamPlayer.new()
@@ -181,18 +205,31 @@ func _build_background() -> void:
 	world.add_child(vignette)
 
 func _build_platforms() -> void:
-	_add_platform(Vector2(180, 210), Vector2(360, 24), TEX_FLOOR)
-	_add_platform(Vector2(600, 210), Vector2(400, 24), TEX_FLOOR)
-	_add_platform(Vector2(1010, 210), Vector2(340, 24), TEX_FLOOR)
-	_add_platform(Vector2(1390, 210), Vector2(420, 24), TEX_FLOOR)
+	var floors := [
+		{"name": "floor1", "pos": Vector2(180, 210), "size": Vector2(360, 24), "texture": TEX_FLOOR},
+		{"name": "floor2", "pos": Vector2(600, 210), "size": Vector2(400, 24), "texture": TEX_FLOOR},
+		{"name": "floor3", "pos": Vector2(1010, 210), "size": Vector2(340, 24), "texture": TEX_FLOOR},
+		{"name": "floor4", "pos": Vector2(1390, 210), "size": Vector2(420, 24), "texture": TEX_FLOOR},
+	]
 
-	_add_platform(Vector2(240, 130), Vector2(100, 16), TEX_LEDGE)
-	_add_platform(Vector2(360, 150), Vector2(80, 16), TEX_LEDGE)
-	_add_platform(Vector2(500, 160), Vector2(120, 16), TEX_LEDGE)
-	_add_platform(Vector2(880, 140), Vector2(120, 16), TEX_LEDGE)
+	for floor in floors:
+		_add_platform(floor["name"], floor["pos"], floor["size"], floor["texture"])
 
-func _add_platform(pos: Vector2, size: Vector2, texture: Texture2D) -> void:
+	_spawn_gap_labels(floors)
+
+	var ledges := [
+		{"name": "ledge1", "pos": Vector2(240, 130), "size": Vector2(100, 16), "texture": TEX_LEDGE},
+		{"name": "ledge2", "pos": Vector2(360, 150), "size": Vector2(80, 16), "texture": TEX_LEDGE},
+		{"name": "ledge3", "pos": Vector2(500, 160), "size": Vector2(120, 16), "texture": TEX_LEDGE},
+		{"name": "ledge4", "pos": Vector2(880, 140), "size": Vector2(120, 16), "texture": TEX_LEDGE},
+	]
+
+	for ledge in ledges:
+		_add_platform(ledge["name"], ledge["pos"], ledge["size"], ledge["texture"])
+
+func _add_platform(name: String, pos: Vector2, size: Vector2, texture: Texture2D) -> void:
 	var body := StaticBody2D.new()
+	body.name = name
 	body.position = pos
 	world.add_child(body)
 
@@ -217,13 +254,34 @@ func _add_platform(pos: Vector2, size: Vector2, texture: Texture2D) -> void:
 	top.scale = Vector2(size.x, 3)
 	top.position = Vector2(0, -size.y * 0.5 + 2)
 	body.add_child(top)
+	_attach_label(body, name, Vector2(0, -size.y * 0.5 - 10))
+
+func _spawn_gap_labels(floors: Array) -> void:
+	if not labels_enabled:
+		return
+	var gap_index := 1
+	for i in range(floors.size() - 1):
+		var left_floor: Dictionary = floors[i]
+		var right_floor: Dictionary = floors[i + 1]
+		var left_edge: float = left_floor["pos"].x + left_floor["size"].x * 0.5
+		var right_edge: float = right_floor["pos"].x - right_floor["size"].x * 0.5
+		if right_edge <= left_edge:
+			continue
+		var center := Vector2((left_edge + right_edge) * 0.5, left_floor["pos"].y)
+		var gap := Node2D.new()
+		gap.name = "gap%s" % gap_index
+		gap.position = center
+		world.add_child(gap)
+		_attach_label(gap, gap.name)
+		gap_index += 1
 
 func _spawn_ladder() -> void:
-	_add_ladder(Vector2(180, 160), 64.0)
-	_add_ladder(Vector2(1020, 140), 102.0)
+	_add_ladder("ladder1", Vector2(180, 160), 64.0)
+	_add_ladder("ladder2", Vector2(1020, 140), 102.0)
 
-func _add_ladder(pos: Vector2, height: float) -> void:
+func _add_ladder(name: String, pos: Vector2, height: float) -> void:
 	var ladder := Area2D.new()
+	ladder.name = name
 	ladder.position = pos
 	ladder.add_to_group("ladder")
 	interactables.add_child(ladder)
@@ -240,10 +298,11 @@ func _add_ladder(pos: Vector2, height: float) -> void:
 	sprite.scale = Vector2(1, height / base_height)
 	sprite.position = Vector2.ZERO
 	ladder.add_child(sprite)
+	_attach_label(ladder, name, Vector2(0, -height * 0.5 - 6))
 
 func _spawn_spikes() -> void:
 	var spikes := Area2D.new()
-	spikes.name = "Spikes"
+	spikes.name = "spikes1"
 	spikes.position = Vector2(740, 198)
 	spikes.monitoring = true
 	interactables.add_child(spikes)
@@ -259,12 +318,13 @@ func _spawn_spikes() -> void:
 	sprite.scale = Vector2(2, 1)
 	sprite.position = Vector2(0, -6)
 	spikes.add_child(sprite)
+	_attach_label(spikes, spikes.name, Vector2(0, -20))
 
 	spikes.body_entered.connect(_on_hazard_body_entered)
 
 func _spawn_kill_zone() -> void:
 	var zone := Area2D.new()
-	zone.name = "KillZone"
+	zone.name = "kill_zone1"
 	zone.position = Vector2(level_width * 0.5, level_height + 40)
 	zone.monitoring = true
 	interactables.add_child(zone)
@@ -276,10 +336,11 @@ func _spawn_kill_zone() -> void:
 	zone.add_child(collider)
 
 	zone.body_entered.connect(_on_hazard_body_entered)
+	_attach_label(zone, zone.name, Vector2(0, -50))
 
 func _spawn_key() -> void:
 	var key := Area2D.new()
-	key.name = "Key"
+	key.name = "key1"
 	key.position = Vector2(880, 126)
 	key.monitoring = true
 	interactables.add_child(key)
@@ -295,12 +356,13 @@ func _spawn_key() -> void:
 	sprite.position = Vector2.ZERO
 	key.add_child(sprite)
 	key_sprite = sprite
+	_attach_label(key, key.name, Vector2(0, -16))
 
 	key.body_entered.connect(_on_key_body_entered)
 
 func _spawn_checkpoint() -> void:
 	var checkpoint := Area2D.new()
-	checkpoint.name = "Checkpoint"
+	checkpoint.name = "checkpoint1"
 	checkpoint.position = Vector2(990, 190)
 	checkpoint.monitoring = true
 	interactables.add_child(checkpoint)
@@ -310,12 +372,13 @@ func _spawn_checkpoint() -> void:
 	var collider := CollisionShape2D.new()
 	collider.shape = shape
 	checkpoint.add_child(collider)
+	_attach_label(checkpoint, checkpoint.name, Vector2(0, -18))
 
 	checkpoint.body_entered.connect(_on_checkpoint_body_entered)
 
 func _spawn_door() -> void:
 	var door := Node2D.new()
-	door.name = "Door"
+	door.name = "door1"
 	door.position = Vector2(1230, 170)
 	interactables.add_child(door)
 
@@ -332,6 +395,7 @@ func _spawn_door() -> void:
 	door_shape = CollisionShape2D.new()
 	door_shape.shape = shape
 	door_blocker.add_child(door_shape)
+	_attach_label(door, door.name, Vector2(0, -36))
 
 	var lintel := Sprite2D.new()
 	lintel.texture = TEX_WALL if TEX_WALL else TEX_PIXEL
@@ -343,7 +407,7 @@ func _spawn_door() -> void:
 
 func _spawn_princess() -> void:
 	var princess := Area2D.new()
-	princess.name = "Princess"
+	princess.name = "princess1"
 	princess.position = Vector2(1500, 176)
 	princess.monitoring = true
 	interactables.add_child(princess)
@@ -369,18 +433,21 @@ func _spawn_princess() -> void:
 	sprite.position = Vector2.ZERO
 	princess.add_child(sprite)
 	princess_sprite = sprite
+	_attach_label(princess, princess.name, Vector2(0, -20))
 
 	princess.body_entered.connect(_on_princess_body_entered)
 
 func _spawn_player() -> void:
 	player = PLAYER_SCENE.instantiate()
+	player.name = "player1"
 	player.position = Vector2(80, 180)
 	actors.add_child(player)
 	player.set_camera_limits(Rect2(0, 0, level_width, level_height))
+	_attach_label(player, player.name, Vector2(0, -24))
 
 func _define_guard_spawns() -> void:
 	guard_spawns = [
-		{"pos": Vector2(620, 180), "left": 540.0, "right": 700.0},
+		{"name": "guard1", "pos": Vector2(620, 180), "left": 540.0, "right": 700.0},
 	]
 
 func _spawn_guards() -> void:
@@ -389,10 +456,12 @@ func _spawn_guards() -> void:
 
 func _spawn_guard_from(spawn: Dictionary) -> void:
 	var guard := GUARD_SCENE.instantiate()
+	guard.name = spawn.get("name", "guard")
 	guard.position = spawn.get("pos", Vector2(660, 180))
 	guard.left_limit = spawn.get("left", 560.0)
 	guard.right_limit = spawn.get("right", 780.0)
 	actors.add_child(guard)
+	_attach_label(guard, guard.name, Vector2(0, -24))
 	guard.connect("player_hit", Callable(self, "_on_guard_player_hit"))
 
 func _reset_guards() -> void:
@@ -402,13 +471,14 @@ func _reset_guards() -> void:
 	_spawn_guards()
 
 func _spawn_torches() -> void:
-	_add_torch(Vector2(140, 150))
-	_add_torch(Vector2(620, 150))
-	_add_torch(Vector2(980, 150))
-	_add_torch(Vector2(1320, 150))
+	_add_torch("torch1", Vector2(140, 150))
+	_add_torch("torch2", Vector2(620, 150))
+	_add_torch("torch3", Vector2(980, 150))
+	_add_torch("torch4", Vector2(1320, 150))
 
-func _add_torch(pos: Vector2) -> void:
+func _add_torch(name: String, pos: Vector2) -> void:
 	var torch := Node2D.new()
+	torch.name = name
 	torch.position = pos
 	world.add_child(torch)
 
@@ -423,6 +493,7 @@ func _add_torch(pos: Vector2) -> void:
 	light.texture_scale = 0.6
 	torch.add_child(light)
 	torch_lights.append(light)
+	_attach_label(torch, name, Vector2(0, -16))
 
 func _spawn_hud() -> void:
 	var hud := CanvasLayer.new()
@@ -465,7 +536,7 @@ func _animate_torches(delta: float) -> void:
 func _on_key_body_entered(body: Node) -> void:
 	if body == player and not has_key:
 		has_key = true
-		var key_node := interactables.get_node_or_null("Key")
+		var key_node := interactables.get_node_or_null("key1")
 		if key_node:
 			key_node.queue_free()
 		_unlock_door()

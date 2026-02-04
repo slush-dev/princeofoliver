@@ -26,6 +26,7 @@ const Z_PLATFORM: f32 = 0.0;
 const Z_INTERACT: f32 = 1.0;
 const Z_ACTOR: f32 = 5.0;
 const Z_GLOW: f32 = 2.0;
+const Z_LABEL: f32 = 30.0;
 
 const PRESENT_LAYER: usize = 1;
 
@@ -100,6 +101,11 @@ struct UiAssets {
     font: Handle<Font>,
 }
 
+#[derive(Resource, Clone, Copy)]
+struct LabelSettings {
+    enabled: bool,
+}
+
 #[derive(Resource)]
 struct AtlasAssets {
     player: Handle<TextureAtlasLayout>,
@@ -121,6 +127,7 @@ struct GuardSpawn {
     pos: Vec2,
     left: f32,
     right: f32,
+    label: &'static str,
 }
 
 #[derive(Component)]
@@ -175,6 +182,9 @@ struct Ladder;
 
 #[derive(Component)]
 struct Key;
+
+#[derive(Component)]
+struct Gap;
 
 #[derive(Component)]
 struct Door;
@@ -238,6 +248,7 @@ struct GameCamera;
 fn main() {
     let render_mode = render_mode_from_args();
     let render_backend = render_backend_from_args();
+    let labels_enabled = labels_enabled_from_args();
     let render_plugin = if render_mode.is_cpu() || render_backend != RenderBackend::Auto {
         RenderPlugin {
             render_creation: WgpuSettings {
@@ -279,6 +290,9 @@ fn main() {
 
     app.insert_resource(render_mode)
         .insert_resource(render_backend)
+        .insert_resource(LabelSettings {
+            enabled: labels_enabled,
+        })
         .init_state::<AppState>()
         .init_resource::<SessionState>()
         .add_message::<RespawnEvent>()
@@ -459,6 +473,7 @@ fn setup(
         pos: to_world(Vec2::new(620.0, 180.0)),
         left: 540.0,
         right: 700.0,
+        label: "guard1",
     }]));
 }
 
@@ -559,6 +574,7 @@ fn spawn_level(
     ui: Res<UiAssets>,
     atlases: Res<AtlasAssets>,
     render_mode: Res<RenderMode>,
+    labels: Res<LabelSettings>,
     mut session: ResMut<SessionState>,
     guard_spawns: Res<GuardSpawns>,
 ) {
@@ -566,17 +582,17 @@ fn spawn_level(
     session.hud_key_icon = None;
 
     spawn_background(&mut commands, &assets, &render_mode);
-    spawn_platforms(&mut commands, &assets, &render_mode);
-    spawn_ladders(&mut commands, &assets);
-    spawn_spikes(&mut commands, &assets);
-    spawn_kill_zone(&mut commands);
-    spawn_key(&mut commands, &assets);
-    spawn_checkpoint(&mut commands);
-    spawn_door(&mut commands, &assets, &render_mode);
-    spawn_princess(&mut commands, &assets, &atlases, &render_mode);
-    spawn_player(&mut commands, &assets, &atlases, &render_mode);
-    spawn_guards(&mut commands, &assets, &atlases, &guard_spawns);
-    spawn_torches(&mut commands, &assets, &render_mode);
+    spawn_platforms(&mut commands, &assets, &render_mode, &ui, &labels);
+    spawn_ladders(&mut commands, &assets, &ui, &labels);
+    spawn_spikes(&mut commands, &assets, &ui, &labels);
+    spawn_kill_zone(&mut commands, &ui, &labels);
+    spawn_key(&mut commands, &assets, &ui, &labels);
+    spawn_checkpoint(&mut commands, &ui, &labels);
+    spawn_door(&mut commands, &assets, &render_mode, &ui, &labels);
+    spawn_princess(&mut commands, &assets, &atlases, &render_mode, &ui, &labels);
+    spawn_player(&mut commands, &assets, &atlases, &render_mode, &ui, &labels);
+    spawn_guards(&mut commands, &assets, &atlases, &guard_spawns, &ui, &labels);
+    spawn_torches(&mut commands, &assets, &render_mode, &ui, &labels);
     spawn_hud(&mut commands, &assets, &ui, &mut session);
 
     commands.spawn((
@@ -627,37 +643,68 @@ fn spawn_background(commands: &mut Commands, assets: &GameAssets, render_mode: &
     }
 }
 
-fn spawn_platforms(commands: &mut Commands, assets: &GameAssets, render_mode: &RenderMode) {
+fn spawn_platforms(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    render_mode: &RenderMode,
+    ui: &UiAssets,
+    labels: &LabelSettings,
+) {
     let floors = [
-        (Vec2::new(180.0, 210.0), Vec2::new(360.0, 24.0), assets.floor.clone()),
-        (Vec2::new(600.0, 210.0), Vec2::new(400.0, 24.0), assets.floor.clone()),
-        (Vec2::new(1010.0, 210.0), Vec2::new(340.0, 24.0), assets.floor.clone()),
-        (Vec2::new(1390.0, 210.0), Vec2::new(420.0, 24.0), assets.floor.clone()),
+        ("floor1", Vec2::new(180.0, 210.0), Vec2::new(360.0, 24.0)),
+        ("floor2", Vec2::new(600.0, 210.0), Vec2::new(400.0, 24.0)),
+        ("floor3", Vec2::new(1010.0, 210.0), Vec2::new(340.0, 24.0)),
+        ("floor4", Vec2::new(1390.0, 210.0), Vec2::new(420.0, 24.0)),
     ];
 
-    for (pos, size, texture) in floors {
-        spawn_platform(commands, assets, to_world(pos), size, texture, render_mode);
+    for (name, pos, size) in floors {
+        spawn_platform(
+            commands,
+            assets,
+            name,
+            to_world(pos),
+            size,
+            assets.floor.clone(),
+            render_mode,
+            ui,
+            labels,
+        );
     }
 
+    spawn_gap_labels(commands, &floors, ui, labels);
+
     let ledges = [
-        (Vec2::new(240.0, 130.0), Vec2::new(100.0, 16.0)),
-        (Vec2::new(360.0, 150.0), Vec2::new(80.0, 16.0)),
-        (Vec2::new(500.0, 160.0), Vec2::new(120.0, 16.0)),
-        (Vec2::new(880.0, 140.0), Vec2::new(120.0, 16.0)),
+        ("ledge1", Vec2::new(240.0, 130.0), Vec2::new(100.0, 16.0)),
+        ("ledge2", Vec2::new(360.0, 150.0), Vec2::new(80.0, 16.0)),
+        ("ledge3", Vec2::new(500.0, 160.0), Vec2::new(120.0, 16.0)),
+        ("ledge4", Vec2::new(880.0, 140.0), Vec2::new(120.0, 16.0)),
     ];
 
-    for (pos, size) in ledges {
-        spawn_platform(commands, assets, to_world(pos), size, assets.ledge.clone(), render_mode);
+    for (name, pos, size) in ledges {
+        spawn_platform(
+            commands,
+            assets,
+            name,
+            to_world(pos),
+            size,
+            assets.ledge.clone(),
+            render_mode,
+            ui,
+            labels,
+        );
     }
 }
 
 fn spawn_platform(
     commands: &mut Commands,
     assets: &GameAssets,
+    name: &str,
     pos: Vec2,
     size: Vec2,
     texture: Handle<Image>,
     render_mode: &RenderMode,
+    ui: &UiAssets,
+    labels: &LabelSettings,
 ) {
     let mut sprite = Sprite::from_image(texture);
     sprite.custom_size = Some(size);
@@ -668,6 +715,7 @@ fn spawn_platform(
             Transform::from_xyz(pos.x, pos.y, Z_PLATFORM),
             Collider { size },
             Solid,
+            Name::new(name.to_string()),
             DespawnOnExit(AppState::InGame),
         ))
         .id();
@@ -685,16 +733,106 @@ fn spawn_platform(
             ));
         });
     }
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        entity,
+        name,
+        Vec2::new(0.0, size.y * 0.5 + 8.0),
+    );
 }
 
-fn spawn_ladders(commands: &mut Commands, assets: &GameAssets) {
-    spawn_ladder(commands, assets, Vec2::new(180.0, 160.0), 64.0);
-    spawn_ladder(commands, assets, Vec2::new(1020.0, 140.0), 102.0);
+fn spawn_gap_labels(
+    commands: &mut Commands,
+    floors: &[(&str, Vec2, Vec2)],
+    ui: &UiAssets,
+    labels: &LabelSettings,
+) {
+    if !labels.enabled {
+        return;
+    }
+
+    let mut gap_index = 1;
+    for window in floors.windows(2) {
+        let (_, left_pos, left_size) = window[0];
+        let (_, right_pos, right_size) = window[1];
+        let left_edge = left_pos.x + left_size.x * 0.5;
+        let right_edge = right_pos.x - right_size.x * 0.5;
+        if right_edge <= left_edge {
+            continue;
+        }
+
+        let center_x = (left_edge + right_edge) * 0.5;
+        let center_y = left_pos.y;
+        let label = format!("gap{}", gap_index);
+        gap_index += 1;
+        let world_pos = to_world(Vec2::new(center_x, center_y));
+        let entity = commands
+            .spawn((
+                Transform::from_xyz(world_pos.x, world_pos.y, Z_INTERACT),
+                Gap,
+                Name::new(label.clone()),
+                DespawnOnExit(AppState::InGame),
+            ))
+            .id();
+
+        maybe_attach_label(
+            commands,
+            ui,
+            labels,
+            entity,
+            label.as_str(),
+            Vec2::new(0.0, 16.0),
+        );
+    }
 }
 
-fn spawn_ladder(commands: &mut Commands, assets: &GameAssets, pos: Vec2, height: f32) {
+fn maybe_attach_label(
+    commands: &mut Commands,
+    ui: &UiAssets,
+    labels: &LabelSettings,
+    entity: Entity,
+    text: &str,
+    offset: Vec2,
+) {
+    if !labels.enabled {
+        return;
+    }
+
+    commands.entity(entity).with_children(|parent| {
+        parent.spawn((
+            Text2d::new(text),
+            TextFont {
+                font: ui.font.clone(),
+                font_size: 10.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.95, 0.9, 0.75, 1.0)),
+            TextLayout::new_with_justify(Justify::Center),
+            Transform::from_xyz(offset.x, offset.y, Z_LABEL),
+        ));
+    });
+}
+
+fn spawn_ladders(commands: &mut Commands, assets: &GameAssets, ui: &UiAssets, labels: &LabelSettings) {
+    spawn_ladder(commands, assets, "ladder1", Vec2::new(180.0, 160.0), 64.0, ui, labels);
+    spawn_ladder(commands, assets, "ladder2", Vec2::new(1025.0, 140.0), 102.0, ui, labels);
+}
+
+fn spawn_ladder(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    name: &str,
+    pos: Vec2,
+    height: f32,
+    ui: &UiAssets,
+    labels: &LabelSettings,
+) {
     let pos = to_world(pos);
-    commands.spawn((
+    let entity = commands
+        .spawn((
         Sprite {
             image: assets.ladder.clone(),
             custom_size: Some(Vec2::new(16.0, height)),
@@ -705,11 +843,22 @@ fn spawn_ladder(commands: &mut Commands, assets: &GameAssets, pos: Vec2, height:
             size: Vec2::new(16.0, height),
         },
         Ladder,
+        Name::new(name.to_string()),
         DespawnOnExit(AppState::InGame),
-    ));
+    ))
+    .id();
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        entity,
+        name,
+        Vec2::new(0.0, height * 0.5 + 6.0),
+    );
 }
 
-fn spawn_spikes(commands: &mut Commands, assets: &GameAssets) {
+fn spawn_spikes(commands: &mut Commands, assets: &GameAssets, ui: &UiAssets, labels: &LabelSettings) {
     let pos = to_world(Vec2::new(740.0, 198.0));
     let entity = commands
         .spawn((
@@ -718,6 +867,7 @@ fn spawn_spikes(commands: &mut Commands, assets: &GameAssets) {
                 size: Vec2::new(32.0, 14.0),
             },
             Hazard,
+            Name::new("spikes1"),
             DespawnOnExit(AppState::InGame),
         ))
         .id();
@@ -732,52 +882,104 @@ fn spawn_spikes(commands: &mut Commands, assets: &GameAssets) {
             Transform::from_xyz(0.0, 6.0, 0.1),
         ));
     });
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        entity,
+        "spikes1",
+        Vec2::new(0.0, 18.0),
+    );
 }
 
-fn spawn_kill_zone(commands: &mut Commands) {
+fn spawn_kill_zone(commands: &mut Commands, ui: &UiAssets, labels: &LabelSettings) {
     let pos = to_world(Vec2::new(LEVEL_WIDTH * 0.5, LEVEL_HEIGHT + 40.0));
-    commands.spawn((
+    let entity = commands
+        .spawn((
         Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
         Collider {
             size: Vec2::new(LEVEL_WIDTH, 80.0),
         },
         Hazard,
+        Name::new("kill_zone1"),
         DespawnOnExit(AppState::InGame),
-    ));
+    ))
+    .id();
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        entity,
+        "kill_zone1",
+        Vec2::new(0.0, 50.0),
+    );
 }
 
-fn spawn_key(commands: &mut Commands, assets: &GameAssets) {
+fn spawn_key(commands: &mut Commands, assets: &GameAssets, ui: &UiAssets, labels: &LabelSettings) {
     let pos = to_world(Vec2::new(880.0, 126.0));
-    commands.spawn((
+    let entity = commands
+        .spawn((
         Sprite::from_image(assets.key.clone()),
         Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
         Collider {
             size: Vec2::new(12.0, 12.0),
         },
         Key,
+        Name::new("key1"),
         KeyFloat {
             base_y: pos.y,
             time: 0.0,
         },
         DespawnOnExit(AppState::InGame),
-    ));
+    ))
+    .id();
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        entity,
+        "key1",
+        Vec2::new(0.0, 14.0),
+    );
 }
 
-fn spawn_checkpoint(commands: &mut Commands) {
+fn spawn_checkpoint(commands: &mut Commands, ui: &UiAssets, labels: &LabelSettings) {
     let pos = to_world(Vec2::new(990.0, 190.0));
-    commands.spawn((
+    let entity = commands
+        .spawn((
         Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
         Collider {
             size: Vec2::new(20.0, 20.0),
         },
         Checkpoint,
+        Name::new("checkpoint1"),
         DespawnOnExit(AppState::InGame),
-    ));
+    ))
+    .id();
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        entity,
+        "checkpoint1",
+        Vec2::new(0.0, 18.0),
+    );
 }
 
-fn spawn_door(commands: &mut Commands, assets: &GameAssets, render_mode: &RenderMode) {
+fn spawn_door(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    render_mode: &RenderMode,
+    ui: &UiAssets,
+    labels: &LabelSettings,
+) {
     let pos = to_world(Vec2::new(1230.0, 170.0));
-    commands.spawn((
+    let door_entity = commands
+        .spawn((
         Sprite {
             image: assets.door.clone(),
             color: Color::srgba(0.55, 0.45, 0.3, 1.0),
@@ -785,8 +987,10 @@ fn spawn_door(commands: &mut Commands, assets: &GameAssets, render_mode: &Render
         },
         Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
         Door,
+        Name::new("door1"),
         DespawnOnExit(AppState::InGame),
-    ));
+    ))
+    .id();
 
     commands.spawn((
         Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
@@ -795,6 +999,7 @@ fn spawn_door(commands: &mut Commands, assets: &GameAssets, render_mode: &Render
         },
         Solid,
         DoorBlocker,
+        Name::new("door_blocker1"),
         DespawnOnExit(AppState::InGame),
     ));
 
@@ -811,6 +1016,15 @@ fn spawn_door(commands: &mut Commands, assets: &GameAssets, render_mode: &Render
             DespawnOnExit(AppState::InGame),
         ));
     }
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        door_entity,
+        "door1",
+        Vec2::new(0.0, 36.0),
+    );
 }
 
 fn spawn_princess(
@@ -818,6 +1032,8 @@ fn spawn_princess(
     assets: &GameAssets,
     atlases: &AtlasAssets,
     render_mode: &RenderMode,
+    ui: &UiAssets,
+    labels: &LabelSettings,
 ) {
     let pos = to_world(Vec2::new(1500.0, 176.0));
     let entity = commands
@@ -827,6 +1043,7 @@ fn spawn_princess(
                 size: Vec2::new(18.0, 26.0),
             },
             Princess,
+            Name::new("princess1"),
             DespawnOnExit(AppState::InGame),
         ))
         .id();
@@ -856,6 +1073,15 @@ fn spawn_princess(
             PrincessWave { time: 0.0 },
         ));
     });
+
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        entity,
+        "princess1",
+        Vec2::new(0.0, 20.0),
+    );
 }
 
 fn spawn_player(
@@ -863,6 +1089,8 @@ fn spawn_player(
     assets: &GameAssets,
     atlases: &AtlasAssets,
     render_mode: &RenderMode,
+    ui: &UiAssets,
+    labels: &LabelSettings,
 ) {
     let pos = to_world(Vec2::new(80.0, 180.0));
     let player_entity = commands
@@ -880,6 +1108,7 @@ fn spawn_player(
             },
             Velocity(Vec2::ZERO),
             Player,
+            Name::new("player1"),
             DespawnOnExit(AppState::InGame),
         ))
         .id();
@@ -933,6 +1162,15 @@ fn spawn_player(
         slash_entity,
     });
 
+    maybe_attach_label(
+        commands,
+        ui,
+        labels,
+        player_entity,
+        "player1",
+        Vec2::new(0.0, 20.0),
+    );
+
 }
 
 fn spawn_guards(
@@ -940,9 +1178,12 @@ fn spawn_guards(
     assets: &GameAssets,
     atlases: &AtlasAssets,
     guard_spawns: &GuardSpawns,
+    ui: &UiAssets,
+    labels: &LabelSettings,
 ) {
     for spawn in guard_spawns.0.iter().copied() {
-        commands.spawn((
+        let entity = commands
+            .spawn((
             Sprite::from_atlas_image(
                 assets.guard.clone(),
                 TextureAtlas {
@@ -964,26 +1205,46 @@ fn spawn_guards(
                 walk_timer: 0.0,
                 alive: true,
             },
+            Name::new(spawn.label),
             DespawnOnExit(AppState::InGame),
-        ));
+        ))
+        .id();
+
+        maybe_attach_label(
+            commands,
+            ui,
+            labels,
+            entity,
+            spawn.label,
+            Vec2::new(0.0, 20.0),
+        );
     }
 }
 
-fn spawn_torches(commands: &mut Commands, assets: &GameAssets, render_mode: &RenderMode) {
-    let positions = [
-        Vec2::new(140.0, 150.0),
-        Vec2::new(620.0, 150.0),
-        Vec2::new(980.0, 150.0),
-        Vec2::new(1320.0, 150.0),
+fn spawn_torches(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    render_mode: &RenderMode,
+    ui: &UiAssets,
+    labels: &LabelSettings,
+) {
+    let torches = [
+        ("torch1", Vec2::new(140.0, 150.0)),
+        ("torch2", Vec2::new(620.0, 150.0)),
+        ("torch3", Vec2::new(980.0, 150.0)),
+        ("torch4", Vec2::new(1320.0, 150.0)),
     ];
 
-    for (index, pos) in positions.iter().enumerate() {
+    for (index, (name, pos)) in torches.iter().enumerate() {
         let pos = to_world(*pos);
-        commands.spawn((
-            Sprite::from_image(assets.torch.clone()),
-            Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
-            DespawnOnExit(AppState::InGame),
-        ));
+        let entity = commands
+            .spawn((
+                Sprite::from_image(assets.torch.clone()),
+                Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
+                Name::new(*name),
+                DespawnOnExit(AppState::InGame),
+            ))
+            .id();
 
         if !render_mode.is_cpu() {
             commands.spawn((
@@ -1004,6 +1265,15 @@ fn spawn_torches(commands: &mut Commands, assets: &GameAssets, render_mode: &Ren
                 DespawnOnExit(AppState::InGame),
             ));
         }
+
+        maybe_attach_label(
+            commands,
+            ui,
+            labels,
+            entity,
+            name,
+            Vec2::new(0.0, 14.0),
+        );
     }
 }
 
@@ -1379,6 +1649,8 @@ fn respawn_system(
     assets: Res<GameAssets>,
     atlases: Res<AtlasAssets>,
     guard_spawns: Res<GuardSpawns>,
+    ui: Res<UiAssets>,
+    labels: Res<LabelSettings>,
     mut slash_q: Query<&mut Visibility, (With<Slash>, Without<Player>)>,
 ) {
     if reader.read().next().is_none() {
@@ -1403,7 +1675,7 @@ fn respawn_system(
         commands.entity(entity).despawn();
     }
 
-    spawn_guards(&mut commands, &assets, &atlases, &guard_spawns);
+    spawn_guards(&mut commands, &assets, &atlases, &guard_spawns, &ui, &labels);
 }
 
 fn door_open_system(
@@ -1558,6 +1830,15 @@ fn render_backend_from_args() -> RenderBackend {
     }
 
     backend
+}
+
+fn labels_enabled_from_args() -> bool {
+    for arg in std::env::args().skip(1) {
+        if arg == "--labels" {
+            return true;
+        }
+    }
+    false
 }
 
 fn try_hit_guard<F: QueryFilter>(

@@ -16,10 +16,6 @@ var walk_timer := 0.0
 var attack_cooldown := 0.0
 var attack_active := 0.0
 var last_position := Vector2.ZERO
-var debug_timer := 0.0
-var last_debug_pos := Vector2.ZERO
-const DEBUG_MOVEMENT := true
-const DEBUG_INPUT := true
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shadow: Sprite2D = $Shadow
@@ -32,7 +28,6 @@ func _ready() -> void:
 	add_to_group("player")
 	respawn_position = global_position
 	last_position = global_position
-	last_debug_pos = global_position
 	_ensure_input_actions()
 	_ensure_interact_action()
 	var pixel_tex := _load_texture("res://assets/pixel.png")
@@ -67,8 +62,6 @@ func respawn() -> void:
 
 func _physics_process(delta: float) -> void:
 	var input_dir := _get_move_dir()
-	if DEBUG_INPUT and input_dir != 0.0:
-		print("PLAYER INPUT dir=", input_dir)
 	var crouching := Input.is_action_pressed("crouch") and is_on_floor()
 	var max_speed := speed * (0.4 if crouching else 1.0)
 	var prev_pos := global_position
@@ -120,14 +113,6 @@ func _physics_process(delta: float) -> void:
 		if not test_move(global_transform, fallback_motion):
 			global_position.x += fallback_motion.x
 	last_position = global_position
-	if DEBUG_MOVEMENT:
-		debug_timer += delta
-		if debug_timer >= 0.5:
-			var moved := global_position.distance_to(last_debug_pos)
-			print("PLAYER DBG pos=", global_position, " vel=", velocity, " input=", input_dir,
-				" floor=", is_on_floor(), " ladder=", on_ladder, " moved=", "%.2f" % moved)
-			last_debug_pos = global_position
-			debug_timer = 0.0
 	_update_animation(delta, input_dir)
 	_update_sword_offset()
 
