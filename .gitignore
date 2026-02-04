@@ -1,6 +1,8 @@
 # Godot 4 cache/imports
 .godot/
 .import/
+godot/.godot/
+godot/.import/
 
 # Godot Mono / C# (unused here, but safe)
 .mono/
