@@ -1,0 +1,8 @@
+[package]
+name = "prince_of_oliver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { path = "../vendor/bevy", default-features = false, features = ["2d", "wav"] }
+bevy_render = { path = "../vendor/bevy/crates/bevy_render", features = ["gles"] }
