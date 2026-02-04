@@ -9,6 +9,7 @@ use bevy::render::RenderPlugin;
 use bevy::render::view::Msaa;
 use bevy::asset::RenderAssetUsages;
 use bevy::ui::IsDefaultUiCamera;
+use bevy::text::LineHeight;
 use bevy::ecs::query::QueryFilter;
 use bevy::prelude::*;
 
@@ -29,6 +30,10 @@ const Z_GLOW: f32 = 2.0;
 const Z_LABEL: f32 = 30.0;
 
 const PRESENT_LAYER: usize = 1;
+const TORCH_GLOW_Y_OFFSET: f32 = 10.0;
+const TORCH_GLOW_BASE_ALPHA: f32 = 0.2;
+const TORCH_GLOW_MIN_ALPHA_FACTOR: f32 = 0.5;
+const PRINCESS_SCALE: f32 = 24.0 / 28.0;
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Hash, Debug, States)]
 enum AppState {
@@ -281,7 +286,7 @@ fn main() {
                 primary_window: Some(Window {
                     title: "Prince of Oliver".to_string(),
                     resolution: (1280, 720).into(),
-                    resizable: false,
+                    resizable: true,
                     ..default()
                 }),
                 ..default()
@@ -546,10 +551,11 @@ fn spawn_centered_text(font: Handle<Font>, text: &str) -> impl Bundle {
             Text::new(text),
             TextFont {
                 font,
-                font_size: 18.0,
+                font_size: 32.0,
                 ..default()
             },
             TextColor(Color::srgba(0.95, 0.92, 0.85, 1.0)),
+            LineHeight::RelativeToFont(1.4),
             TextLayout::new_with_justify(Justify::Center),
         )],
     )
@@ -1035,7 +1041,7 @@ fn spawn_princess(
     ui: &UiAssets,
     labels: &LabelSettings,
 ) {
-    let pos = to_world(Vec2::new(1500.0, 176.0));
+    let pos = to_world(Vec2::new(1500.0, 181.0));
     let entity = commands
         .spawn((
             Transform::from_xyz(pos.x, pos.y, Z_INTERACT),
@@ -1069,7 +1075,11 @@ fn spawn_princess(
                     index: 0,
                 },
             ),
-            Transform::from_xyz(0.0, 0.0, 0.1),
+            Transform {
+                translation: Vec3::new(0.0, 0.0, 0.1),
+                scale: Vec3::splat(PRINCESS_SCALE),
+                ..default()
+            },
             PrincessWave { time: 0.0 },
         ));
     });
@@ -1247,19 +1257,20 @@ fn spawn_torches(
             .id();
 
         if !render_mode.is_cpu() {
+            let glow_color = Color::srgba(1.0, 0.8, 0.55, TORCH_GLOW_BASE_ALPHA);
             commands.spawn((
                 Sprite {
                     image: assets.glow.clone(),
-                    color: Color::srgba(1.0, 0.8, 0.55, 0.8),
+                    color: glow_color,
                     ..default()
                 },
                 Transform {
-                    translation: Vec3::new(pos.x, pos.y, Z_GLOW),
+                    translation: Vec3::new(pos.x, pos.y + TORCH_GLOW_Y_OFFSET, Z_GLOW),
                     scale: Vec3::splat(0.6),
                     ..default()
                 },
                 TorchLight {
-                    base_color: Color::srgba(1.0, 0.8, 0.55, 0.8),
+                    base_color: glow_color,
                     phase: index as f32 * 1.7,
                 },
                 DespawnOnExit(AppState::InGame),
@@ -1349,6 +1360,7 @@ fn player_system(
         player_q.single_mut()
     {
         let pos = Vec2::new(transform.translation.x, transform.translation.y);
+        let set_respawn = keys.just_pressed(KeyCode::KeyR);
         let ladder_hit = ladders.iter().any(|(ladder_tf, ladder_collider)| {
             aabb_intersects(
                 pos,
@@ -1431,6 +1443,9 @@ fn player_system(
 
         transform.translation.x = new_pos.x;
         transform.translation.y = new_pos.y;
+        if set_respawn {
+            state.respawn_position = new_pos;
+        }
 
         if input_dir.abs() > 0.1 {
             state.facing = input_dir.signum();
@@ -1733,9 +1748,10 @@ fn animate_princess_system(time: Res<Time>, mut sprites: Query<(&mut Sprite, &mu
 fn animate_torches_system(time: Res<Time>, mut torches: Query<(&mut Sprite, &TorchLight)>) {
     let t = time.elapsed_secs();
     for (mut sprite, torch) in torches.iter_mut() {
-        let flicker = 0.08 * (t * 7.0 + torch.phase).sin();
+        let flicker = 0.04 * (t * 3.5 + torch.phase).sin();
         let mut color = torch.base_color;
-        color.set_alpha((torch.base_color.alpha() + flicker).clamp(0.3, 1.0));
+        let min_alpha = (torch.base_color.alpha() * TORCH_GLOW_MIN_ALPHA_FACTOR).min(1.0);
+        color.set_alpha((torch.base_color.alpha() + flicker).clamp(min_alpha, 1.0));
         sprite.color = color;
     }
 }
